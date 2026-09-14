@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>FINSmap — Карта бойових дій</title>
+  <title>FINSmap — Интерактивная карта</title>
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -47,7 +47,7 @@
     }
     .search-btn:hover { background: #1d4ed8; }
 
-    /* Водяной знак на карте */
+    /* Водяной знак */
     .map-watermark {
       position: absolute; bottom: 20px; left: 16px; z-index: 999;
       background: var(--bg-dark); padding: 6px 12px; border-radius: 20px;
@@ -119,7 +119,7 @@
     .leaflet-touch .leaflet-bar { border: 1px solid var(--border) !important; border-radius: 10px !important; overflow: hidden; }
     .leaflet-touch .leaflet-bar a { background-color: var(--bg-dark) !important; color: #fff !important; backdrop-filter: blur(10px); border-bottom: 1px solid var(--border) !important; }
 
-    /* Кастомные всплывающие окна на карте */
+    /* Попапы */
     .leaflet-popup-content-wrapper { background: var(--bg-dark) !important; color: #fff !important; backdrop-filter: blur(12px); border: 1px solid var(--border); border-radius: 10px; }
     .leaflet-popup-tip { background: var(--bg-dark) !important; }
 
@@ -167,27 +167,27 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.02-1.96 1.25-5.54 3.69-.52.36-1 .53-1.42.52-.47-.01-1.37-.26-2.03-.48-.82-.27-1.47-.42-1.42-.88.03-.25.38-.51 1.07-.78 4.19-1.82 7-3.03 8.43-3.61 4.01-1.65 4.85-1.94 5.39-1.95.12 0 .37.03.54.17.14.12.18.28.2.45-.02.07-.02.13-.03.22z"/></svg>
           Telegram Канал
         </div>
-        <div class="tg-card-desc">Оновлення кожен день,гарне оформлення,аналітика подій</div>
+        <div class="tg-card-desc">Эксклюзивная аналитика, ежедневные сводки и оперативные обновления.</div>
         <a href="https://t.me/finsmap" target="_blank" class="tg-btn">
-          Підписатись
+          Подписаться на канал
         </a>
       </div>
 
       <!-- Слои -->
       <div class="section">
-        <div class="section-title">віджет</div>
+        <div class="section-title">Слои карты</div>
         <div class="control-group">
           <label class="control-item">
             <input type="checkbox" id="chkZones" checked onchange="toggleLayer('zones')">
-            <span>Зони контролю</span>
+            <span>Зоны контроля</span>
           </label>
           <label class="control-item">
             <input type="checkbox" id="chkFort" checked onchange="toggleLayer('fort')">
-            <span>Фортифікаційні споруди</span>
+            <span>Фортификационные линии</span>
           </label>
           <label class="control-item">
             <input type="checkbox" id="chkLabels" checked onchange="toggleLayer('labels')">
-            <span>Назва населених пунктів</span>
+            <span>Названия населенных пунктов</span>
           </label>
         </div>
       </div>
@@ -197,12 +197,12 @@
         <div class="section-title">Карта-основа</div>
         <div class="control-group">
           <label class="control-item">
-            <input type="radio" name="basemap" value="esri" checked onchange="changeBaseMap('esri')">
-            <span>Спутник (Esri)</span>
+            <input type="radio" name="basemap" value="google" checked onchange="changeBaseMap('google')">
+            <span>Спутник (Google)</span>
           </label>
           <label class="control-item">
-            <input type="radio" name="basemap" value="google" onchange="changeBaseMap('google')">
-            <span>Спутник (Google)</span>
+            <input type="radio" name="basemap" value="esri" onchange="changeBaseMap('esri')">
+            <span>Спутник (Esri)</span>
           </label>
           <label class="control-item">
             <input type="radio" name="basemap" value="dark" onchange="changeBaseMap('dark')">
@@ -216,8 +216,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <!-- Файлы данных -->
-  <script src="data/zones.js?v=2.0"></script>
-  <script src="data/fortifications.js?v=2.0"></script>
+  <script src="data/zones.js?v=2.1"></script>
+  <script src="data/fortifications.js?v=2.1"></script>
 
   <script>
     const map = L.map('map', { zoomControl: false }).setView([48.3794, 31.1656], 6);
@@ -230,11 +230,11 @@
     map.getPane('labelsPane').style.zIndex = 500;
 
     const baseMaps = {
-      esri: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18, attribution: 'Esri' }),
       google: L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', { maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: 'Google' }),
+      esri: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18, attribution: 'Esri' }),
       dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, attribution: 'CartoDB' })
     };
-    let currentBaseLayer = baseMaps.esri.addTo(map);
+    let currentBaseLayer = baseMaps.google.addTo(map);
 
     const labelsLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
