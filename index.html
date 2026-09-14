@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>FINSmap</title>
+  
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html { width: 100%; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; background-color: #0b0f19; }
+    #app { display: flex; width: 100vw; height: 100vh; position: relative; }
+    #map { flex: 1; height: 100%; background: #000; }
+
+    /* Поиск */
+    .search-box {
+      position: absolute; top: 15px; left: 15px; z-index: 1000; display: flex; gap: 6px;
+      background: rgba(15, 23, 42, 0.85); padding: 6px; border-radius: 6px;
+      backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+    .search-input {
+      background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff; padding: 8px 12px; border-radius: 4px; outline: none; font-size: 13px; width: 200px;
+    }
+    .search-input::placeholder { color: #8fa0b5; }
+    .search-btn {
+      background: #2563eb; color: #ffffff; border: none; padding: 8px 14px;
+      border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; white-space: nowrap;
+    }
+    .search-btn:hover { background: #1d4ed8; }
+
+    /* Кнопка меню на мобильных */
+    .menu-toggle {
+      display: none; position: absolute; top: 15px; right: 15px; z-index: 1000;
+      background: rgba(15, 23, 42, 0.9); color: #fff; border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;
+      backdrop-filter: blur(8px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Боковая панель */
+    .sidebar {
+      width: 300px; background: #0c121e; color: #e2e8f0; padding: 24px 20px;
+      display: flex; flex-direction: column; gap: 24px; z-index: 1001;
+      box-shadow: -4px 0 20px rgba(0, 0, 0, 0.6); border-left: 1px solid rgba(255, 255, 255, 0.05);
+      transition: transform 0.3s ease;
+    }
+    .sidebar-header { border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 16px; }
+    .sidebar-top { display: flex; justify-content: space-between; align-items: center; }
+    .sidebar-title { font-size: 22px; font-weight: 700; color: #ffffff; letter-spacing: 0.5px; }
+    .close-btn { display: none; background: none; border: none; color: #94a3b8; font-size: 22px; cursor: pointer; }
+    .tg-link { display: inline-flex; align-items: center; gap: 6px; color: #38bdf8; text-decoration: none; font-size: 13px; margin-top: 6px; font-weight: 500; }
+    .tg-link:hover { text-decoration: underline; }
+    .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 1px; margin-bottom: 12px; }
+    .control-group { display: flex; flex-direction: column; gap: 12px; }
+    .control-item { display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer; color: #cbd5e1; user-select: none; }
+    .control-item input { accent-color: #2563eb; width: 16px; height: 16px; }
+
+    .leaflet-bottom.leaflet-right { right: 310px !important; bottom: 15px !important; }
+    .leaflet-bar a { background-color: #0c121e !important; color: #fff !important; border-color: rgba(255, 255, 255, 0.15) !important; }
+
+    /* Адаптивность для телефонов */
+    @media (max-width: 768px) {
+      .menu-toggle { display: block; }
+      .close-btn { display: block; }
+      .sidebar {
+        position: fixed; top: 0; right: 0; height: 100%; width: 280px;
+        transform: translateX(100%);
+      }
+      .sidebar.active { transform: translateX(0); }
+      .search-box { top: 12px; left: 12px; max-width: calc(100vw - 110px); }
+      .search-input { width: 100%; min-width: 110px; }
+      .leaflet-bottom.leaflet-right { right: 15px !important; bottom: 20px !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="app">
+    <div id="map"></div>
+
+    <div class="search-box">
+      <input type="text" id="searchInput" class="search-input" placeholder="Поиск населенного пункта...">
+      <button onclick="searchLocation()" class="search-btn">Найти</button>
+    </div>
+
+    <button class="menu-toggle" onclick="toggleSidebar()">☰ Меню</button>
+
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-top">
+          <div class="sidebar-title">FINSmap</div>
+          <button class="close-btn" onclick="toggleSidebar()">✕</button>
+        </div>
+        <a href="https://t.me/finsmap" target="_blank" class="tg-link">✈ t.me/finsmap</a>
+      </div>
+
+      <div>
+        <div class="section-title">Отображение слоев</div>
+        <div class="control-group">
+          <label class="control-item">
+            <input type="checkbox" id="chkZones" checked onchange="toggleLayer('zones')">
+            <span>Зоны контроля (Полигоны)</span>
+          </label>
+          <label class="control-item">
+            <input type="checkbox" id="chkFort" checked onchange="toggleLayer('fort')">
+            <span>Фортификации и линии</span>
+          </label>
+          <label class="control-item">
+            <input type="checkbox" id="chkLabels" checked onchange="toggleLayer('labels')">
+            <span>Названия населенных пунктов</span>
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-title">Подложка карты</div>
+        <div class="control-group">
+          <label class="control-item">
+            <input type="radio" name="basemap" value="esri" checked onchange="changeBaseMap('esri')">
+            <span>Спутник (Esri World Imagery)</span>
+          </label>
+          <label class="control-item">
+            <input type="radio" name="basemap" value="google" onchange="changeBaseMap('google')">
+            <span>Спутник (Google Satellite)</span>
+          </label>
+          <label class="control-item">
+            <input type="radio" name="basemap" value="dark" onchange="changeBaseMap('dark')">
+            <span>Тёмная схема (CartoDB Dark)</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Файлы данных -->
+  <script src="data/zones.js?v=1.4"></script>
+  <script src="data/fortifications.js?v=1.4"></script>
+
+  <script>
+    const map = L.map('map', { zoomControl: false }).setView([48.3794, 31.1656], 6);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    // Панели для порядка слоев
+    map.createPane('fortPane');
+    map.getPane('fortPane').style.zIndex = 450;
+
+    map.createPane('labelsPane');
+    map.getPane('labelsPane').style.zIndex = 500;
+
+    const baseMaps = {
+      esri: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18, attribution: 'Esri' }),
+      google: L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', { maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: 'Google' }),
+      dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, attribution: 'CartoDB' })
+    };
+    let currentBaseLayer = baseMaps.esri.addTo(map);
+
+    // Слой подписей без границ и на кириллице
+    const labelsLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      subdomains: 'abcd',
+      pane: 'labelsPane'
+    }).addTo(map);
+
+    function changeBaseMap(type) {
+      map.removeLayer(currentBaseLayer);
+      currentBaseLayer = baseMaps[type].addTo(map);
+    }
+
+    // Открытие / Закрытие меню на мобильных
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('active');
+    }
+
+    // Закрытие меню при клике по карте
+    map.on('click', () => {
+      document.getElementById('sidebar').classList.remove('active');
+    });
+
+    // Парсер цветов
+    function parseColor(col, fallback = '#ffffff') {
+      if (!col || typeof col !== 'string') return fallback;
+      let c = col.replace('#', '').trim();
+      if (c.length === 6) return '#' + c;
+      if (c.length === 8) {
+        return '#' + c.substring(6, 8) + c.substring(4, 6) + c.substring(2, 4);
+      }
+      return fallback;
+    }
+
+    // Фильтр жёлтого цвета
+    function isYellowColor(col) {
+      if (!col) return false;
+      const hex = parseColor(col).replace('#', '');
+      if (hex.length !== 6) return false;
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
+      return (r > 140 && g > 120 && b < 120);
+    }
+
+    function extractFeatures(obj) {
+      if (!obj) return [];
+      if (obj.type === 'FeatureCollection' && Array.isArray(obj.features)) return obj.features;
+      if (Array.isArray(obj)) return obj;
+      if (obj.type === 'Feature') return [obj];
+      return [];
+    }
+
+    const rawZones = typeof zonesData !== 'undefined' ? extractFeatures(zonesData) : [];
+    const rawForts = typeof fortData !== 'undefined' ? extractFeatures(fortData) : [];
+    const allObjects = [...rawZones, ...rawForts];
+
+    // Исключаем жёлтые полигоны
+    const polygonFeatures = allObjects.filter(f => {
+      if (!f || !f.geometry || (f.geometry.type !== 'Polygon' && f.geometry.type !== 'MultiPolygon')) return false;
+      const p = f.properties || {};
+      const col = p.fill || p['fill-color'] || p.stroke || p['stroke-color'] || p.color;
+      return !isYellowColor(col);
+    });
+
+    const lineFeatures = allObjects.filter(f => f && f.geometry && (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString'));
+
+    // Зоны контроля
+    const zonesLayer = L.geoJSON({ type: "FeatureCollection", features: polygonFeatures }, {
+      style: function(feature) {
+        const p = feature.properties || {};
+        const strokeColor = parseColor(p.stroke || p['stroke-color'] || p.color || p.fill, '#e63946');
+        const fillColor = parseColor(p.fill || p['fill-color'] || strokeColor, '#e63946');
+        
+        return {
+          color: strokeColor,
+          weight: p['stroke-width'] ? parseFloat(p['stroke-width']) : 1.5,
+          opacity: p['stroke-opacity'] !== undefined ? parseFloat(p['stroke-opacity']) : 0.8,
+          fillColor: fillColor,
+          fillOpacity: p['fill-opacity'] !== undefined ? parseFloat(p['fill-opacity']) : 0.45
+        };
+      }
+    }).addTo(map);
+
+    // Фортификации
+    const fortLayer = L.geoJSON({ type: "FeatureCollection", features: lineFeatures }, {
+      pane: 'fortPane',
+      style: function(feature) {
+        const p = feature.properties || {};
+        const strokeColor = parseColor(p.stroke || p['stroke-color'] || p.color || p.fill, '#ffffff');
+        
+        return {
+          color: strokeColor,
+          weight: p['stroke-width'] ? parseFloat(p['stroke-width']) : 2,
+          opacity: p['stroke-opacity'] !== undefined ? parseFloat(p['stroke-opacity']) : 0.95
+        };
+      }
+    }).addTo(map);
+
+    // Переключение слоев
+    function toggleLayer(type) {
+      if (type === 'zones') {
+        document.getElementById('chkZones').checked ? map.addLayer(zonesLayer) : map.removeLayer(zonesLayer);
+      }
+      if (type === 'fort') {
+        document.getElementById('chkFort').checked ? map.addLayer(fortLayer) : map.removeLayer(fortLayer);
+      }
+      if (type === 'labels') {
+        document.getElementById('chkLabels').checked ? map.addLayer(labelsLayer) : map.removeLayer(labelsLayer);
+      }
+    }
+
+    // Авто-масштаб
+    const bounds = [];
+    try {
+      if (zonesLayer.getBounds().isValid()) bounds.push(zonesLayer.getBounds());
+      if (fortLayer.getBounds().isValid()) bounds.push(fortLayer.getBounds());
+    } catch(e) {}
+
+    if (bounds.length > 0) {
+      let finalBounds = bounds[0];
+      for (let i = 1; i < bounds.length; i++) finalBounds.extend(bounds[i]);
+      map.fitBounds(finalBounds);
+    }
+
+    // Поиск
+    function searchLocation() {
+      const query = document.getElementById('searchInput').value;
+      if (!query) return;
+
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.length > 0) {
+            map.setView([parseFloat(data[0].lat), parseFloat(data[0].lon)], 12);
+            document.getElementById('sidebar').classList.remove('active');
+          } else {
+            alert('Населенный пункт не найден');
+          }
+        });
+    }
+
+    document.getElementById('searchInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') searchLocation();
+    });
+  </script>
+</body>
+</html>
