@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>FINSmap — Інтерактивна карта</title>
+  <title>FINSmap — Інтерактивна карта України</title>
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -26,16 +26,21 @@
     #app { display: flex; width: 100vw; height: 100vh; position: relative; }
     #map { flex: 1; height: 100%; background: #060911; }
 
-    /* Пошук */
+    /* Блок пошуку */
     .search-box {
       position: absolute; top: 16px; left: 16px; z-index: 1000; display: flex; gap: 8px;
       background: var(--bg-dark); padding: 6px 8px; border-radius: 12px;
       backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
       border: 1px solid var(--border); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
     }
+    .search-input-wrap {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
     .search-input {
       background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
-      color: #fff; padding: 8px 14px; border-radius: 8px; outline: none; font-size: 13px; width: 200px;
+      color: #fff; padding: 8px 14px; border-radius: 8px; outline: none; font-size: 13px; width: 220px;
       transition: all 0.2s;
     }
     .search-input:focus { border-color: #38bdf8; background: rgba(255, 255, 255, 0.08); }
@@ -46,6 +51,39 @@
       transition: background 0.2s; white-space: nowrap;
     }
     .search-btn:hover { background: #1d4ed8; }
+
+    /* Випадаючий список варіантів пошуку */
+    .search-results {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      right: 0;
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      max-height: 240px;
+      overflow-y: auto;
+      display: none;
+      flex-direction: column;
+      z-index: 1002;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(16px);
+    }
+    .search-results.active { display: flex; }
+    .search-result-item {
+      padding: 10px 12px;
+      font-size: 12px;
+      color: var(--text-main);
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      transition: background 0.2s, color 0.2s;
+      line-height: 1.3;
+    }
+    .search-result-item:last-child { border-bottom: none; }
+    .search-result-item:hover {
+      background: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+    }
 
     /* Віджет Онлайн-лічильника */
     .live-online-badge {
@@ -123,6 +161,12 @@
     .control-item { display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer; color: #cbd5e1; user-select: none; }
     .control-item input { accent-color: #38bdf8; width: 16px; height: 16px; cursor: pointer; }
 
+    /* Стиль для квадратних маркерів */
+    .square-point-icon {
+      background: transparent;
+      border: none;
+    }
+
     /* Адаптивність */
     @media (max-width: 768px) {
       .menu-toggle { display: block; }
@@ -132,7 +176,7 @@
       .search-box { top: 12px; left: 12px; max-width: calc(100vw - 180px); }
       .search-input { width: 100%; min-width: 80px; }
       .live-online-badge { top: 12px; right: 75px; padding: 6px 10px; }
-      .live-text { display: none; } /* На мобільних залишаємо тільки цифру */
+      .live-text { display: none; }
       .map-watermark { display: none; }
     }
   </style>
@@ -142,9 +186,12 @@
   <div id="app">
     <div id="map"></div>
 
-    <!-- Пошук -->
+    <!-- Пошук із випадаючим списком -->
     <div class="search-box">
-      <input type="text" id="searchInput" class="search-input" placeholder="Пошук локації...">
+      <div class="search-input-wrap">
+        <input type="text" id="searchInput" class="search-input" placeholder="Пошук н.п. в Україні..." autocomplete="off">
+        <div id="searchResults" class="search-results"></div>
+      </div>
       <button onclick="searchLocation()" class="search-btn">Знайти</button>
     </div>
 
@@ -191,6 +238,10 @@
             <span>Зони контролю</span>
           </label>
           <label class="control-item">
+            <input type="checkbox" id="chkBrigades" checked onchange="toggleLayer('brigades')">
+            <span>Підрозділи / Бригади</span>
+          </label>
+          <label class="control-item">
             <input type="checkbox" id="chkFort" checked onchange="toggleLayer('fort')">
             <span>Фортифікаційні лінії</span>
           </label>
@@ -227,9 +278,17 @@
   <!-- Файли даних -->
   <script src="data/zones.js?v=2.3"></script>
   <script src="data/fortifications.js?v=2.3"></script>
+  <script src="data/brigades.js?v=2.3"></script>
 
   <script>
-    const map = L.map('map', { zoomControl: false }).setView([48.3794, 31.1656], 6);
+    // Ініціалізація карти зі стартовим фокусом на ВСЮ Україну
+    const map = L.map('map', { zoomControl: false });
+    const ukraineBounds = [
+      [44.38, 22.13], // Південно-західний кут
+      [52.38, 40.22]  // Північно-східний кут
+    ];
+    map.fitBounds(ukraineBounds);
+
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     map.createPane('fortPane');
@@ -262,21 +321,23 @@
 
     map.on('click', () => {
       document.getElementById('sidebar').classList.remove('active');
+      document.getElementById('searchResults').classList.remove('active');
     });
 
-    /* --- Симуляція реального онлайн-лічильника --- */
+    /* --- Симуляція онлайн-лічильника --- */
     let liveUsers = Math.floor(Math.random() * (165 - 120 + 1)) + 120;
     const onlineCounterElem = document.getElementById('onlineCounter');
     
     function updateLiveOnline() {
-      const delta = Math.floor(Math.random() * 7) - 3; // Коливальний крок (-3 до +3)
+      const delta = Math.floor(Math.random() * 7) - 3;
       liveUsers = Math.max(85, liveUsers + delta);
       if (onlineCounterElem) {
         onlineCounterElem.innerText = liveUsers;
       }
     }
-    setInterval(updateLiveOnline, 3500); // Оновлення кожні 3.5 сек
+    setInterval(updateLiveOnline, 3500);
 
+    /* --- Обробка даних GeoJSON --- */
     function parseColor(col, fallback = '#ffffff') {
       if (!col || typeof col !== 'string') return fallback;
       let c = col.replace('#', '').trim();
@@ -306,7 +367,9 @@
     }
 
     const rawZones = typeof zonesData !== 'undefined' ? extractFeatures(zonesData) : [];
-    const rawForts = typeof fortData !== 'undefined' ? extractFeatures(fortData) : [];
+    const rawForts = typeof fortData !== 'undefined' ? extractFeatures(fortData) : (typeof fortificationsData !== 'undefined' ? extractFeatures(fortificationsData) : []);
+    const rawBrigades = typeof brigadesData !== 'undefined' ? extractFeatures(brigadesData) : (typeof brigades !== 'undefined' ? extractFeatures(brigades) : []);
+
     const allObjects = [...rawZones, ...rawForts];
 
     const polygonFeatures = allObjects.filter(f => {
@@ -318,6 +381,7 @@
 
     const lineFeatures = allObjects.filter(f => f && f.geometry && (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString'));
 
+    // 1. Шар Зон контролю
     const zonesLayer = L.geoJSON({ type: "FeatureCollection", features: polygonFeatures }, {
       style: function(feature) {
         const p = feature.properties || {};
@@ -334,6 +398,7 @@
       }
     }).addTo(map);
 
+    // 2. Шар Фортифікацій
     const fortLayer = L.geoJSON({ type: "FeatureCollection", features: lineFeatures }, {
       pane: 'fortPane',
       style: function(feature) {
@@ -348,42 +413,126 @@
       }
     }).addTo(map);
 
-    function toggleLayer(type) {
-      if (type === 'zones') document.getElementById('chkZones').checked ? map.addLayer(zonesLayer) : map.removeLayer(zonesLayer);
-      if (type === 'fort') document.getElementById('chkFort').checked ? map.addLayer(fortLayer) : map.removeLayer(fortLayer);
-      if (type === 'labels') document.getElementById('chkLabels').checked ? map.addLayer(labelsLayer) : map.removeLayer(labelsLayer);
+    // 3. Шар Бригад та Підрозділів (відображення синіми квадратами)
+    const brigadesLayer = L.geoJSON({ type: "FeatureCollection", features: rawBrigades }, {
+      pointToLayer: function(feature, latlng) {
+        const squareIcon = L.divIcon({
+          className: 'square-point-icon',
+          html: `<div style="
+            width: 8px;
+            height: 8px;
+            background-color: #38bdf8;
+            border: 1px solid #ffffff;
+            box-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
+          "></div>`,
+          iconSize: [8, 8],
+          iconAnchor: [4, 4],
+          popupAnchor: [0, -4]
+        });
+        return L.marker(latlng, { icon: squareIcon });
+      },
+      onEachFeature: function(feature, layer) {
+        const p = feature.properties || {};
+        let popupHTML = `<div style="font-family: sans-serif; color: #1e293b; max-width: 240px;">`;
+        if (p.name) popupHTML += `<b style="font-size: 14px; color: #0f172a;">${p.name}</b>`;
+        if (p.description) popupHTML += `<div style="font-size: 12px; margin-top: 4px; color: #475569;">${p.description}</div>`;
+
+        const photoSrc = p.icon || p.photo || p.photo_path || p.photo_url;
+        if (photoSrc && !photoSrc.includes('gstatic.com')) {
+          popupHTML += `<img src="${photoSrc}" style="width: 100%; border-radius: 6px; margin-top: 8px; display: block;">`;
+        }
+        popupHTML += `</div>`;
+        layer.bindPopup(popupHTML);
+      }
+    }).addTo(map);
+
+    /* --- Функція перемикання шарів (вмикання/вимикання прапорцями) --- */
+    function toggleLayer(layerType) {
+      const layers = {
+        zones: zonesLayer,
+        brigades: brigadesLayer,
+        fort: fortLayer,
+        labels: labelsLayer
+      };
+
+      const target = layers[layerType];
+      if (!target) return;
+
+      if (map.hasLayer(target)) {
+        map.removeLayer(target);
+      } else {
+        map.addLayer(target);
+      }
     }
 
-    const bounds = [];
-    try {
-      if (zonesLayer.getBounds().isValid()) bounds.push(zonesLayer.getBounds());
-      if (fortLayer.getBounds().isValid()) bounds.push(fortLayer.getBounds());
-    } catch(e) {}
-
-    if (bounds.length > 0) {
-      let finalBounds = bounds[0];
-      for (let i = 1; i < bounds.length; i++) finalBounds.extend(bounds[i]);
-      map.fitBounds(finalBounds);
-    }
+    /* --- Розумний Пошук із Вибором Варіантів --- */
+    let searchMarker = null;
 
     function searchLocation() {
-      const query = document.getElementById('searchInput').value;
-      if (!query) return;
+      const query = document.getElementById('searchInput').value.trim();
+      const resultsContainer = document.getElementById('searchResults');
+      
+      if (!query) {
+        resultsContainer.classList.remove('active');
+        return;
+      }
 
-      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`)
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=ua&limit=6`)
         .then(res => res.json())
         .then(data => {
+          resultsContainer.innerHTML = '';
+          
           if (data && data.length > 0) {
-            map.setView([parseFloat(data[0].lat), parseFloat(data[0].lon)], 12);
-            document.getElementById('sidebar').classList.remove('active');
+            data.forEach(item => {
+              const div = document.createElement('div');
+              div.className = 'search-result-item';
+              div.innerText = item.display_name;
+              
+              div.onclick = () => {
+                const lat = parseFloat(item.lat);
+                const lon = parseFloat(item.lon);
+                
+                map.setView([lat, lon], 12);
+                
+                if (searchMarker) map.removeLayer(searchMarker);
+                searchMarker = L.circleMarker([lat, lon], {
+                  radius: 8,
+                  fillColor: '#38bdf8',
+                  color: '#ffffff',
+                  weight: 2,
+                  opacity: 1,
+                  fillOpacity: 0.9
+                }).addTo(map);
+
+                resultsContainer.classList.remove('active');
+                document.getElementById('searchInput').value = item.display_name.split(',')[0];
+                document.getElementById('sidebar').classList.remove('active');
+              };
+              
+              resultsContainer.appendChild(div);
+            });
+            resultsContainer.classList.add('active');
           } else {
-            alert('Населений пункт не знайдено');
+            resultsContainer.innerHTML = '<div class="search-result-item" style="cursor:default; color:#94a3b8;">Населений пункт не знайдено</div>';
+            resultsContainer.classList.add('active');
           }
+        })
+        .catch(err => {
+          console.error(err);
         });
     }
 
+    // Автоматичний пошук під час натискання Enter
     document.getElementById('searchInput').addEventListener('keypress', function(e) {
       if (e.key === 'Enter') searchLocation();
+    });
+
+    // Закриття випадаючого списку при кліку за межами пошуку
+    document.addEventListener('click', function(e) {
+      const searchBox = document.querySelector('.search-box');
+      if (searchBox && !searchBox.contains(e.target)) {
+        document.getElementById('searchResults').classList.remove('active');
+      }
     });
   </script>
 </body>
